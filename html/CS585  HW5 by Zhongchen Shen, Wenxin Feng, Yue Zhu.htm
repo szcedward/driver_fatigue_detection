@@ -1,0 +1,538 @@
+
+<!-- saved from url=(0055)http://cs-people.bu.edu/yuezhu/cs585/hw4/cs585-hw4.html -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <!-- <style type="text/css"> -->
+    <!--   body { margin: auto; width: 960px;} -->
+    <!-- </style> -->
+    <title>CS585: HW4 by Zhongchen Shen, Wenxin Feng, Yue Zhu</title>
+  </head>
+
+  <body>
+    <center>
+      <a href="http://www.bu.edu/">
+        <img border="0" src="./CS585  HW5 by Zhongchen Shen, Wenxin Feng, Yue Zhu_files/bu-logo.gif" width="120" height="120"></a>
+    </center>
+    <h1>Driver Fatigue Detection System</h1>
+    <p>
+      <b>
+        CS 585 Project<br>
+        Zhongchen Shen, Wenxin Feng, Yue Zhu <br>
+        Dec 05, 2012
+      </b>
+    </p>
+
+    <hr>
+    <h2>Problem Definition</h2>
+    <p>
+      Driver fatigue is one of the major causes of car accidents, since the driver cannot make rapid and accurate decisions when they are tired or sleepy. Thus, our project aims to build a fatigue detection system, which can detect driver's fatigue feature in real-time.
+    </p>
+
+    <p>
+      We define two features of fatigued driver: droopy eyes (or rapidly blinking eyes) and yawning mouth. The problem can be described as 1) detect face and localize eyes and mouth; 2) detect eye blink and calculate its frequency; 3) detect yawning behavior; 4) set warning threshold.
+    </p>
+
+    <p>
+      Our input is video from the web-camera, and our output is a real-time video with detected area, necessary information and warning message.
+    </p>
+    <hr>
+
+    <h2>Method and Implementation</h2>
+    <p>
+      According to the problem definition, we mainly divide this project into five parts:
+      <ol>
+        <li>Face and eye detection</li>
+        <li>Eye blinking detection</li>
+        <li>Yawning detection</li>
+        <li>Network transmission</li>
+    <li>Warning system design</li>
+      </ol>
+    </p>
+
+    <p>
+      In the first part, where we do face and eye detection, we apply a method
+      called 'Viola Jones', which is provided in OpenCV library. With the eye
+      detected, it is easy to get the region of interest (ROI) of eye, which
+      will be used in eye blinking detection in the second part. Also, with the
+      face detected, it is easy to estimate the position of human mouth, and
+      consequently, we can get the ROI of mouth, which will be used in the mouth
+      detection in the third part of this project.
+    </p>
+
+    <p>
+      In the second part, eye blinking detection, the system captures the moment
+      when the person being monitored blinks eyes, and calculates the eye
+      blinking rate. Also, if the person closes his eyes, the system can detect
+      this eye closed status.
+    </p>
+    <p>
+      In the third part, yawning detection, the system decides whether or not a
+      person is yawning, generally by measuring how far the person's lips apart,
+      with the help of contour detection algorithm.
+    </p>
+    <p>
+      In the fourth part, network transmission, we make our system to have a
+      distributed structure, so that it can process the video transmitted from
+      other devices, which significantly increases the flexibility and
+      feasibility.
+    </p>
+
+    <p>
+      We devised several classes. The functionalities of each class are described
+      as follows:
+    </p>
+    <h3>Part 1: Face and Eye Detection</h3>
+    <p>
+      In this part, we apply the method 'Viola Jones' to help to detection face
+      and eyes, with a training set of faces and eyes provided in OpenCV.
+    </p>
+    <p>
+      After getting the center of the eye, we define the eye ROI in the
+      following way. Since we already get face center, we can estimate the
+      position of eyes based on the common fact that human's eyes are located in
+      the top half of the face. Here we assume that both eyes always blink
+      simultaneously, so we can detect the motion of single eye. According to
+      the estimated position, We draw a small rectangle around the center of
+      eye, and create a corresponding cv::Mat matrix as the eye ROI, for the use
+      of part 2. As shown in the following figure, eye ROI are marked with blue
+      rectangle.
+    </p>
+    <p>
+      <center>
+        <b>Eye ROI</b><br>
+        <img src="img/eye_roi.png">
+      </center>
+    </p>
+    <p>
+      The way to get the mouth ROI is not based on the mouth detection from
+      Viola Jones, because we find that Viola Jones method cannot perform a
+      reliable mouth detection, especially when the mouth is opening. However, we
+      can actually easily get the mouth ROI, because the mouth must locate at
+      the bottom part of the axis of the face. Based on this fact, we draw a
+      rectangle at the corresponding position of the face, and create another
+      cv::Mat matrix so as as to store the mouth ROI.
+    </p>
+
+
+    <h3>Part 2: Eye Blinking Detection</h3>
+    <p>
+      Since people always blink both eyes at the same time, so in this part, we
+      only monitor the right eye. To detect eye blinking, we need to know the
+      current state of the eye, either open or closed.
+      <ul>
+        <li>If the state of eye changes from closed to open, it indicates an eye
+        blinking.</li>
+        <li>
+          If the state of the eye keeps closed for a certain amount of time (2
+          seconds in our system), the eye will be detected as closed.
+        </li>
+      </ul>
+    </p>
+
+    <h4>Method to detect eye state</h4>
+    <p>
+      First, we acquire the eyeball color by sampling the RGB component on the
+      eye center pixel. Then, on the eye ROI provided in the part 1, we do
+      absolute thresholding based on the eyeball color, and project the eye
+      pixels onto Y-axis. In this way, we can have a intensity map on Y-axis
+      showing the distribution of eyeball pixels on Y-axis, and consequently, by
+      taking the cliffs of such intensity map, we can get the height of the
+      eyeball, which reflects how largely a person is opening his eyes. After
+      getting the quantified measurement of the opening level of the eye, we
+      define a certain threshold (eyeball height = 4 in our case), to
+      distinguish between opening eye and closed eye.
+    </p>
+
+    <h4>Method to get the eye blinking rate</h4>
+    <p>
+      First we define a ring buffer with a length of 100. In each frame, if eye
+      blinking is detected, we push a 1 into the buffer, otherwise 0. So, when
+      the system warms up (after the very first 100 frames), it will calculate
+      the eye blinking rate, and keep updating it every frame.
+    </p>
+
+    <h3>Part3: Yawning Detection</h3>
+    <p>
+      We detect the yawning motion by measuring the size of the mouth. To
+      measure the size of the mouth, we first get the contour of the mouth by
+      using contour finding algorithm. Such process can be divided into three
+      steps.
+      <ul>
+        <li>Segmentaion and smoothing</li>
+        <li>Getting the contour of the mouth</li>
+        <li>Decision of yawning </li>
+      </ul>
+    </p>
+
+    <h4>Segmentaion and smoothing</h4>
+    <p>
+      When the mouth is open, the area inside the mouth is dark, which creates a
+      sharp change of the brightness inside mouth ROI. By doing thresholding, we
+      can get a rough segmentation of the dark area inside mouth. After that, by
+      applying blur, erosion and dilation with a 4 by 4 matrix, we can
+      significantly get rid of the noise, and smooth the shape of the
+      segmentation.
+    </p>
+
+    <h4>Getting the contour of the mouth</h4>
+    <p>
+      After the segmentation, there are still some noise caused by a variaty of
+      reasons, for example, the shade area near the chin. By applying the
+      contour finding algorithm, we can get a vector of the contours of the
+      object that appears in the segmentation, and we simply take the largest
+      one, since the contour of the mouth is very likely to be bigger than any
+      noise.
+    </p>
+
+    <h4>Yawning decision</h4>
+    <p>
+      With contour of the mouth, it is very easy to decide if a person is
+      yawning of not by checking the size of the mouth, and this is a way we do
+      it.  We traverse all the points on the contour, can get the largest and
+      smallest Y-coordinate values, then take the difference of them to get the
+      height of the mouth. If the height is greater than a certain threshold, we
+      decide that the person is yawning.
+    </p>
+
+    <h3>Part4: Transmit cv::Mat via network</h3>
+    <p>
+      OpenCV does not provide the functionality of remote camera or object
+      serialization, so in order to implement network features, we also designed
+      a library for transmitting OpenCV cv::Mat object via network. The
+      underlying transmission protocol is TCP, which is connect-oriented. So
+      when the program starts, it blocked itself until it establishes a
+      connection.
+    </p>
+    <p>
+      The network transmission library has several classes organized in
+      hierarchy. The functionalities of each class are described as follows:
+    </p>
+    <ul>
+      <li><h4>TCPNet</h4>
+        <p>
+          TCPNet class is an abstract class for socket connection on Windows
+          platform. It provides fundamental abstract methods for either
+          establishing a server application or creating a client application. It
+          automatically does segmentation of data being sent, as a result it
+          supports transmit large data segments.
+        </p>
+        <p>
+          Virtual functions are used in this class. The functions setupNetwork
+          and closeNetwork are abstracted. So TCPNet class can act as either a
+          server side or a client side.
+        </p>
+
+      </li>
+      <li><h4>TCPServer</h4>
+        <p>
+          Inherited from the TCPNet class, TCPServer class implements abstract
+          methods defined in the TCPNet class. It is an encapsulation of TCP
+          server application. In addition to common network communication
+          routines, it has a method named doBlockedAccepted, which is used to
+          block the server side itself and wait for incoming connection from a
+          client.
+        </p>
+        <p>
+          The current implementation is single-threaded. In this project, one of
+          our needs is to use remote camera. So, this is a one-to-one
+          communication. It is not difficult to extended to a multiple-threaded
+          server.
+      </p></li>
+      <li><h4>TCPClient</h4>
+        <p>
+          Similar to the TCPServer class, the TCPClient class is inherited from
+          the TCPNet class and a encapsulation of client application. Besides
+          the methods inherited from its base class, it has a method named
+          doBlockedConnect, which is used to establish a connection with remote
+          servers.
+      </p></li>
+      <li><h4>MatNet</h4>
+        <p>
+          The class MatNet is an abstract class that uses the functionalities
+          provided in the TCPNet class. It does marshall and unmarshall of Mat
+          object. The Mat can be reconstructed using the following information:
+          width, height, raw data array, type and step. So, these fields must be
+          marshalled into buffer.
+        </p>
+        <p>
+          The buffer is a 10 MB dynamically allocated byte array. So, here we
+          assume that the size Mat is smaller than 10 MB. This is sufficient in
+          most cases. The size of a 320 by 640 frame captured from webcam is
+          about 1 MB.
+      </p></li>
+      <li><h4>MatServer</h4>
+        <p>
+          The class MatServer implements the server side functionality of
+          transmitting Mat object. It is a derived class of MatNet class. Also
+          it uses functionalities provided in the TCPServer class to do
+          underlying transmission.
+      </p></li>
+      <li><h4>MatClient</h4>
+        <p>
+          Similar to the class MatServer, the class MatClient implements the
+          client side functionality of transmitting Mat object. It is inherited
+          from MatNet class.
+      </p></li>
+    </ul>
+    <h4>Sample Usage</h4>
+    <p>
+      We provide a sample program of OpenCV cv::Mat network transmission
+      library. The program is to transmit frame from the client side to the
+      server side. The frame is an object of cv::Mat.
+    </p>
+    <p>
+      <center>
+        <b>Server side</b><br>
+        <img src="img/server.png">
+      </center>
+    </p>
+    <p>
+      <center>
+        <b>Client side</b><br>
+        <img src="img/client.png">
+      </center>
+    </p>
+
+  <h2>Part 5: Warning Design</h2>
+  <p>
+    Warning signal will be triggered in three conditions:
+    <ol>
+      <li>Eye blinking rate becomes too high</li>
+      <li>Cosed eye detected</li>
+      <li>Yawning detected</li>
+    </ol>
+    In our system, if any of the above conditions is met, there will be red text appears on the screen. The samples can be found in next section.
+  </p>
+
+  <h2>Modes of the system</h2>
+  <p>
+    Our syetem can be configured with three modes: carema mode, video mode, and remote mode.
+  </p>
+
+  <h3>Camera mode (real-time)</h3>
+  <p>
+    In camera mode, the video frames are captured from the webcam on the computer, and this reflects a real-time performace
+    of the system. In this real-time mode, we do care about the frame rate, so we calculate the frame rate in the following way:
+    <ul>
+      During the processing of each frame,
+      <li>Get the clock tik when starting processing the frame</li>
+      <li>Get the clock tik when finishing processing the frame</li>
+      <li>Get the time used to process this frame, then take the reciprocal</li>
+    </ul>
+  </p>
+
+  <h3>Video mode</h3>
+  </p>
+    In video mode, the video frames are read from the input video file, which is not a real-time case, so that the time needed to
+    process a frame will not influence the frame rate, and the rate will always be the frame rate that is defined by the waitKey()
+    method.
+  <p>
+
+  <h3>Remote mode</h3>
+  <p>
+    In remote mode, the video frames are transmitted from remote devices on the network, so that the system is in a distributed
+    structure, which is more practical in real life. In this mode, the computer serves as the server, and theoretically any device that can access the internet and is with a camera
+    can be the client. This mode makes it possible that we can put a cell phone on the car, have it run as the client, and send the real-time video to the server
+    to detect the fatigueness of the driver.
+  </p>
+
+<hr>
+
+    <h2>Experiments and Results</h2>
+    <p>
+    We made thress sets of experiments aimed to get the accuracy of eye blinking detection, closed eye detection and yawning detection. <br/>
+    In the first set of experiments, our group member blink his eyes for 40 times, and we recorded the following data:
+    <ul>
+    <li>The number of successful eye blinking detection (true positive).</li>
+    <li>The number of times that there detected a blink, wheras he did not blink his eye (false positive).</li>
+    <li>The number of times that he blinked his eyes, but the systems did not detect that (false negative).</li>
+    </ul>
+    In the second set of experiments, our group member closed his eyes for 10 times(here closing eyes means to make eyes comletely closed for at least 4 seconds),
+    and we recorded the following data:
+    <ul>
+    <li>The number of successful closed eye detection (true positive).</li>
+    <li>The number of times that the closed eye was detected, wheras he did not close his eyes (false positive).</li>
+    <li>The number of times that he closed his eyes, but the systems did not detect that (false negative).</li>
+    </ul>
+    In the third set of experiments, our group member yawned for 10 times, and we recorded the following data:
+    <ul>
+    <li>The number of successful yawning detection (true positive).</li>
+    <li>The number of times that there detected a yawning action, wheras he did not yawn (false positive).</li>
+    <li>The number of times that he yawned, but the systems did not detect that (false negative).</li>
+    </ul>
+    </p>
+
+  <center>
+      <table border="1" cellspacing="2" cellpadding="12">
+        <tbody><tr>
+            <td colspan="3"><p><strong> Eye blinking detection</strong></p>
+      </td>
+          </tr>
+
+      <tr>
+      <td>true positive</td>
+      <td>false positive</td>
+      <td>false negative</td>
+      </tr>
+          <tr>
+            <td><img src="img/blink.png" width="400" height="300"></td>
+            <td><img src="img/blink_fp.png" width="400" height="300"></td>
+            <td><img src="img/blink_fn.png" width="400" height="300"></td>
+          </tr>
+    </tbody>
+  </table>
+  </br>
+  <table border="1" cellspacing="2" cellpadding="12">
+        <tbody>
+          <tr>
+            <td colspan="3"><p><strong> Closed eye detection</strong></p>
+      </td>
+          </tr>
+      <tr>
+      <td>true positive</td>
+      <td>false positive</td>
+      <td>false negative</td>
+      </tr>
+          <tr>
+            <td><img src="img/closed.png" width="400" height="300"></td>
+            <td><img src="img/closed_fp.png" width="400" height="300"></td>
+            <td><img src="img/closed_fn.png" width="400" height="300"></td>
+          </tr>
+      </tbody>
+  </table>
+  </br>
+  <table border="1" cellspacing="2" cellpadding="12">
+        <tbody>
+          <tr>
+            <td colspan="3"><p><strong>Yawning detection</strong></p>
+      </td>
+          </tr>
+      <tr>
+      <td>true positive</td>
+      <td>false positive</td>
+      <td>false negative</td>
+      </tr>
+          <tr>
+            <td><img src="img/yawn.png" width="400" height="300"></td>
+            <td><img src="img/yawn_fp.png" width="400" height="300"></td>
+            <td><img src="img/yawn_fn.png" width="400" height="300"></td>
+          </tr>
+      </tbody></table>
+    </center>
+    <br>
+    <p>
+    According to our experiments, we made the following confusion matrices (experiments are made under good light condition):
+  </p>
+  <p>
+    <b>Eye blinking detection (40 experiments)</b>
+    <table border = "1">
+    <tr>
+      <td width = "80" height="50">tp: 35</td>
+      <td width = "80" height="50">fp: 2</td>
+    </tr>
+    <tr>
+      <td width = "80" height="50">fn: 5</td>
+      <td width = "80" height="50">tn: Cannot measure</td>
+    </tr>
+    <table>
+  </p>
+
+    <p>
+    <b>Closed eye detection (10 experiments)</b>
+    <table border = "1">
+    <tr>
+      <td width = "80" height="50">tp: 9</td>
+      <td width = "80" height="50">fp: 0</td>
+    </tr>
+    <tr>
+      <td width = "80" height="50">fn: 1</td>
+      <td width = "80" height="50">tn: Cannot measure</td>
+    </tr>
+    <table>
+  </p>
+
+  <p>
+    <b>Yawning detection (10 experiments)</b>
+    <table border = "1">
+    <tr>
+      <td width = "80" height="50">tp: 10</td>
+      <td width = "80" height="50">fp: 0</td>
+    </tr>
+    <tr>
+      <td width = "80" height="50">fn: 0</td>
+      <td width = "80" height="50">tn: Cannot measure</td>
+    </tr>
+    <table>
+  </p>
+    <hr>
+    <h2>Discussion and Conclusions</h2>
+    <p>
+      Our system works very well in real-time (camera mode), but should be under appropriate
+    light condition. Under appropriate light condition, the real-time frame rate can be
+    17 frame per second at maximal. With such frame rate, the performance of the system
+    is reliable because it is able to capture nearly every critical moment when a person performs
+    eye blinking motion (which is the most diffcult motion to be detected), that is, the frame
+    in which the person's eye is open, the frame in which the the person's eye is completely closed,
+    and the frame in which the person's eye re-opens. And such critical frames are
+    the key for successful eye blinking detection.
+    </p>
+
+    <p>
+      In the process of eye detection, instead of using a fixed color threshold, we sample the
+    eye color of the user, because different people have different eye color. And this makes our system
+    suitable for a wide variaty of people.
+    </p>
+
+  <p>
+    One of the most exciting part of our system is its distributed structure. To make this system a real
+    product, we need to care about its feasibility. We make the system to be consisted of a client and a server.
+    The server can be a powerful computer anywhere in the world, while the client can be a small device in the car,
+    whose only responsibility is transmitting the real-time video frames to the server through the network, and it is
+    completely the server's job to process the video. In such a way, client device is not necessary at all to be with
+    a high computational ability, which increases the system's feasibility significantly.
+  </p>
+
+    <p>
+      However, there are some limitations for sure. One of them is the requirement of appropriate light
+    condition, which is a common limitation if the system is based on color thresholding. When the light condition
+    changes, we will need to change the threshold accordingly. To compensate that, we build a sliede bar
+    to adjust the threshold parameters needed for yawning detection. However, in real prodect, we cannot have
+    such slide bar as the compensation. So the potential improvement can be the following. When doing mouth
+    detection, we can use gradience change, instead of absolute thresholding as the tool for finding the segmentation
+    of the mouth.
+    </p>
+
+    <p>
+    </p>
+    <hr>
+
+
+
+
+    <script type="text/javascript" src="./CS585  HW5 by Zhongchen Shen, Wenxin Feng, Yue Zhu_files/jquery-1.4.2.min.js"></script>
+    <script type="text/javascript" src="./CS585  HW5 by Zhongchen Shen, Wenxin Feng, Yue Zhu_files/inlinekeywords.js"></script>
+    <script type="text/javascript" src="./CS585  HW5 by Zhongchen Shen, Wenxin Feng, Yue Zhu_files/pconfig.js"></script>
+    <script type="text/javascript">
+      var sndpID = '11807';
+      var sndgID = '{0D781469-E15A-49E5-A176-14E990A5653D}';
+      var CorrectedDomain;
+      var OriginalDomain;
+      function sendoriInline2(){function b(a,b,d){if((a==-1||!c(d.charAt(a)))&&(b>=d.length||!c(d.charAt(b)))){return true}return false}function c(a){var b=a.charCodeAt(0);if(b>47&&b<58||b>64&&b<91||b>96&&b<123){return true}return false}var a=window.location!=window.parent.location?true:false;if(a){return false}var d=jQuery.noConflict();d(document).ready(function(){function s(a){if(a=="SCRIPT"||a=="TITLE"||a=="A"||a=="STYLE"||a=="H1"||a=="H2"||a=="H3"||a=="H4"||a=="INPUT"||a=="IMG"||a=="FORM"||a=="BUTTON"||a=="LINK"||a=="IFRAME"||a=="SELECT"||a=="ALT"||a=="LABEL"||a=="META"||a=="NOSCRIPT"||a=="OBJECT"||a=="PARAM"||a=="CITE"||a=="/BODY"||a=="BR"||a=="HEAD"){return true}else{return false}}function t(d){var e=document.URL;var i=new Object;i.substituted=false;if(f==true){return i}var l=0;var m;textlower=d.toLowerCase();l=0;var p="</span></a>";i.newText="";var q=0;for(o=0;o<d.length&&a<b;++o){if(g[d]!=null||d[o]==" "||d[o]==";"||d[o]==","||d[o]=="."||d[o]=="<"||d[o]==">"||d[o]=="?"){if(g[d]!=null){l=0;o=d.length}if(h[textlower]!=undefined&&h[textlower]!=""){f=true;break}word=d.substring(l,o);wordlower=word.toLowerCase();if(g[word]!=null&&h[wordlower]==undefined&&(e.indexOf(g[word])<0||g[word]=="keyword")){adbrandterm=word;if(word.indexOf("&")>=0){adbrandterm=word.replace("&","")}if(word.indexOf("'")>=0){adbrandterm=word.replace("'","")}if(i.newText==""){preElement=d.substring(0,l)}else{preElement=i.newText.substring(0,l+q)}postElement=d.substring(o);if(g[word]=="keyword"){if(!n){highlightStartTag="<a href='http://securelink.sendori.com/r?key="+adbrandterm+"&spid=1908&output=redirect&ix=1' target='_blank'><span id='inlineTextHighlight'>"}else if(n&&k!=undefined&&k!=""){highlightStartTag="<a href='http://securelink.sendori.com/r?key="+adbrandterm+"&spid="+k+"&output=redirect&ix=1' target='_blank'><span id='inlineTextHighlight'>"}else continue}else{if(!n){highlightStartTag="<a href='http://securelink.sendori.com/br?key="+adbrandterm+"&spid=1853&output=redirect&ix=1' target='_blank'><span id='inlineTextHighlight'>"}else if(n&&j!=undefined&&j!=""){highlightStartTag="<a href='http://securelink.sendori.com/br?key="+adbrandterm+"&spid="+j+"&output=redirect&ix=1' target='_blank'><span id='inlineTextHighlight'>"}else continue}p="</span></a>";i.newText=preElement+highlightStartTag+word+p+postElement;i.substituted=true;q+=highlightStartTag.length+p.length;c[c.length]="http://l.sendori.com/stbin/lognow.cgi/?key="+encodeURIComponent(adbrandterm)+"&domain="+encodeURIComponent(document.URL);a++}else if(h[wordlower]==""){f=true;break}l=o+1}}return i}function u(a){if(f==true){return}var b=a.nodeValue;var c=a.parentNode;var d=t(b);if(d.substituted==true){var e=document.createElement("text");e.innerHTML=d.newText;c.replaceChild(e,a)}}function v(a){if(s(a.nodeName)){return}if(a.nodeName=="#text"&&d.trim(a.nodeValue).length>0){u(a)}if(a.hasChildNodes()){for(var b=0;b<a.childNodes.length;b++){v(a.childNodes[b])}}}var a=0;var b=3;var c=new Array;var e=document.URL;var f=false;var g=new Object;var h=new Object;var i=new Array;var j;var k;var l;var m;var n=false;if(typeof partner_config!=="undefined"){for(var o=0;o<partner_config.products.length;o++){var p=partner_config.products[o].id;if(sndpID==p){n=true;j=partner_config.products[o].inline_brand;k=partner_config.products[o].inline_keyword;if((j==undefined||j=="")&&(k==undefined||k=="")){return}}}}for(var o=0;o<inline_keyword_obj.inlinebrands.length;o++){var q=inline_keyword_obj.inlinebrands[o].brandword;var r=inline_keyword_obj.inlinebrands[o].hostname;g[q]=r}for(var o=0;o<blacklist_keywords.blacklist.length;o++){var q=blacklist_keywords.blacklist[o].keyword;h[q]=""}if(typeof console==="undefined"||typeof console.log==="undefined"){console={};console.log=function(){}}d.expr[":"].HasBlackListURL=function(a,b,c){var e=false;d.each(blacklist_urls.urls,function(b){urlstring=this.url.toString().toLowerCase();if(d(a).attr("href")!=null&&d(a).attr("href")!=="undefined"&&d(a).attr("href").toString().toLowerCase().indexOf(urlstring)>=0){e=true}});return e};if(d("a:HasBlackListURL('')").length>0){f=true}var w=document.getElementsByTagName("body");for(var x=0;x<w.length;x++){var y=w[x];v(y)}d("[class*=nav_pop_li]").find("a[href*=securelink.sendori.com/]").each(function(a){var b=d(this).text();d(this).replaceWith(b)});if(!f){d("HTML").find("span#inlineTextHighlight").css("visibility","visible");for(var x=0;x<c.length;x++){d.ajax({url:c[x],type:"GET",dataType:"jsonp",cache:false,error:function(){}})}}else{d("a[href*=securelink.sendori.com/]").each(function(a){var b=d(this).text();d(this).replaceWith(b)})}})}function sendoriSlider(){function j(){var a=false;if(CorrectedDomain!=undefined&&OriginalDomain!=undefined){if(c!=undefined&&c!=""){for(var e=0;e<slider_keywords.slidertext.length;e++){var f=slider_keywords.slidertext[e].BRAND;if(CorrectedDomain.indexOf(f.toLowerCase())>=0){brand_category=slider_keywords.slidertext[e].CATEGORY;if(c!=undefined&&c!="")r(brand_category,"NX",c,"");else r(brand_category,"NX",1860,"");a=true;break}}}if(!a&&d!=undefined&&d=="Y"){l(CorrectedDomain,"NX")}}if(b!=undefined&&b!=""){if(!m()&&!n()&&!o()&&!p())return false;if(o()){query=q("p")}else{query=q("q")}if(query==undefined||query==null||query==""){return false}for(var e=0;e<slider_keywords.slidertext.length;e++){var f=slider_keywords.slidertext[e].BRAND;if(f.toLowerCase()==query.toLowerCase()){faviconsrc=slider_keywords.slidertext[e].FAVICONSRC;if(b!=undefined&&b!="")r(f,"SERP",b,"");else r(f,"SERP",1871,faviconsrc)}}}}function k(a,b,c,e,f,g){divToInsert="<div id='slider_container' style='display:none'><div id='slider_header'>";if(a=="NX"&&d!=undefined&&d=="Y"){divToInsert+="<div id='notification_alert'></div>"+"<div id='notification_message'></div>"}divToInsert+="<div style='left:auto; position:absolute; right:0;margin-right:5px;margin-top:4px;'><div id='snd_logo'></div>"+"<div id='icon_close'></div></div></div>"+"<div id='slider_body'>";var i=h.browser;if(i.msie&&i.version.slice(0,3)=="7.0"){divToInsert+="<div id='favicon'></div><div style='margin-left:30px;padding-top:3px;'>"}else{h("#favicon").css("height","16px");divToInsert+="<div id='favicon'></div><div style='margin-left:30px;padding-top:3px;position:absolute;'>"}divToInsert+="<div id='ad_title'></div>"+"<div id='ad_body'></div></div>"+"<div id='bt_learn'></div>"+"</div>"+"<div id='slider_footer'>"+"<div id='ad_url'></div></div>"+"</div>";divToInsert+="<div style='display:none;'><img src='//pixel.quantserve.com/pixel/p-fbiS6Ydv_HyB-.gif' border='0' height='1' width='1' alt='Quantcast'/></div>";var j=j||[];j.push({qacct:"p-fbiS6Ydv_HyB-"});var k=document.createElement("script");k.type="text/javascript";k.src="http://edge.quantserve.com/quant.js";k.async=true;var l=document.getElementsByTagName("script")[0];l.parentNode.insertBefore(k,l);divToInsert+="<div style='display:inline;'><img height='1' width='1' style='border-style:none;' src='//googleads.g.doubleclick.net/pagead/viewthroughconversion/1001837251/?value=0&label=FqiuCJWt7AMQw6Xb3QM&guid=ON&script=0'/></div>";var m=1001837251;var n="FqiuCJWt7AMQw6Xb3QM";var o=window.google_tag_params;var p=true;var q=document.createElement("script");q.type="text/javascript";q.src="www.googleadservices.com/pagead/conversion.js";q.async=true;var l=document.getElementsByTagName("script")[0];l.parentNode.insertBefore(q,l);h(document.body).append(divToInsert);if(h("#slider_container").is(":visible")){}else{h("#slider_container").slideDown(1500)}h("#icon_close").click(function(){h("#slider_container").slideUp(1500)});if(a=="NX"){h("#notification_message").html(s());h("#icon_close").click(function(){h("#slider_container").slideUp(1500)})}h("#ad_title").html(b);h("#ad_body").html(c);h("#ad_url").html("Sponsored by: "+e);if(g=="G"){favicon_url="url(http://www.google.com/s2/favicons?domain="+e+")"}else{favicon_url="url("+g+")"}h("#favicon").css("background-image",favicon_url);h("#slider_body").click(function(){window.open(f)});h("#ad_url").hover(function(){h(this).css("cursor","pointer")},function(){h(this).css("cursor","auto")});h("#snd_logo").hover(function(){h(this).css("cursor","pointer")},function(){h(this).css("cursor","auto")});h("#ad_url").click(function(){window.open(f)});h("#snd_logo").click(function(){window.open("http://support.sendori.com/home")})}function l(){var a="<div id='Nx_slider_container' style='display:none'>"+"<div id='slider_header'>"+"<div id='notification_alert'></div>"+"<div id='notification_message'></div>"+"<div style='left: auto; position: absolute; right:0;margin-right: 5px;margin-top:4px;'><div id='snd_logo'></div>"+"<div id='icon_close'></div></div>"+"</div>"+"</div>";a+="<div style='display:none;'><img src='//pixel.quantserve.com/pixel/p-fbiS6Ydv_HyB-.gif' border='0' height='1' width='1' alt='Quantcast'/></div>";var b=b||[];b.push({qacct:"p-fbiS6Ydv_HyB-"});var c=document.createElement("script");c.type="text/javascript";c.src="http://edge.quantserve.com/quant.js";c.async=true;var d=document.getElementsByTagName("script")[0];d.parentNode.insertBefore(c,d);a+="<div style='display:inline;'><img height='1' width='1' style='border-style:none;' src='//googleads.g.doubleclick.net/pagead/viewthroughconversion/1001837251/?value=0&label=FqiuCJWt7AMQw6Xb3QM&guid=ON&script=0'/></div>";var e=1001837251;var f="FqiuCJWt7AMQw6Xb3QM";var g=window.google_tag_params;var i=true;var j=document.createElement("script");j.type="text/javascript";j.src="www.googleadservices.com/pagead/conversion.js";j.async=true;var d=document.getElementsByTagName("script")[0];d.parentNode.insertBefore(j,d);h(document.body).append(a);if(h("#Nx_slider_container").is(":visible")){h("#Nx_slider_container").slideUp(1500)}else if(!h("slider_container").is(":visible")){h("#Nx_slider_container").slideDown(1500)}if(h("slider_container").is(":visible")){h("#Nx_slider_container").css("display","none")}h("#icon_close").click(function(){h("#Nx_slider_container").slideUp(1500)});h("#snd_logo").hover(function(){h(this).css("cursor","pointer")},function(){h(this).css("cursor","auto")});h("#snd_logo").click(function(){window.open("http://support.sendori.com/home")});h("#notification_message").html(s())}function m(){if(document.referrer.indexOf("www.google.com/url")!=-1&&document.URL.indexOf("google.com")==-1){return true}return false}function n(){if(document.referrer.indexOf("www.bing.com/search")!=-1&&document.URL.indexOf("bing.com/search")==-1){return true}return false}function o(){if(document.referrer.indexOf("search.yahoo.com/search")!=-1&&document.URL.indexOf("search.yahoo.com")==-1){return true}return false}function p(){if(document.referrer.indexOf("www.ask.com/web")!=-1&&document.URL.indexOf("ask.com/web")==-1){return true}return false}function q(a){var b;var c=document.referrer;var d=c.split("&");for(var e=0;e<d.length;e++){var f=d[e].indexOf(a+"=");arg=d[e].substring(0,f+1);if(f!=-1&&(arg==a||arg.indexOf("?"+a)!=-1)){b=d[e].substring(f+2)}else continue}return unescape(b)}function r(a,b,c,e){h.ajax({url:"http://securelink.sendori.com/r?key="+a+"&spid="+c+"&output=json&rf="+document.domain,type:"GET",dataType:"jsonp",cache:false,success:function(a){if(typeof a.ads[0]!=="undefined"){if(a.ads[0].displayURL.indexOf("http")>=0||a.ads[0].displayURL.indexOf("https")>=0){displayURL=a.ads[0].displayURL.substring(a.ads[0].displayURL.indexOf("//")+2)}else displayURL=a.ads[0].displayURL;if(a.ads[0].url.indexOf("http")<0){clickURL="http://"+a.ads[0].url}else clickURL=a.ads[0].url;if(b=="NX"){e="G";for(var c=0;c<slider_keywords.slidertext.length;c++){var f=slider_keywords.slidertext[c].BRAND;if(displayURL.indexOf(f)>=0){e=slider_keywords.slidertext[c].FAVICONSRC}}}k(b,a.ads[0].title,a.ads[0].description,displayURL,clickURL,e)}else if(b=="NX"&&d!=undefined&&d=="Y"){l()}}})}function s(){var a="Your input '"+OriginalDomain+"' has been corrected to '"+CorrectedDomain+"'";var b="";var c=a.length>63?63:a.length;for(i=0;i<c;++i){b+=a.charAt(i)}if(c==63)b+="...";return b}var a=false;var b;var c;var d;if(typeof partner_config!=="undefined"){for(var e=0;e<partner_config.products.length;e++){var f=partner_config.products[e].id;if(sndpID==f){a=true;b=partner_config.products[e].slider_referrer;c=partner_config.products[e].slider_Nx;d=partner_config.products[e].Ntfcn;if((d==undefined||d=="")&&(c==undefined||c=="")&&(b==undefined||b=="")){return}else break}}}if(!a){return}var g=window.location!=window.parent.location?true:false;var h=jQuery.noConflict(true);h(document).ready(function(){if(!g){j()}})}sendoriInline2();sendoriSlider()
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             </script>
+<style type="text/css">
+  #inlineTextHighlight{background:none repeat scroll 0 50% transparent;text-decoration:underline;display:inline;visibility:none;color:blue !important;font-family:Arial;cursor:pointer;line-height:1.5em}
+  #slider_header{height:26px;width:510px;background-image:url(http://cdn.sendori.com/images/bg_header.png);background-repeat:repeat-x;border-left:1px #1A5189;border-top:1px #1A5189;border-right:1px #1A5189;display:block}
+  #slider_body{height:90px;width:510px;background-image:url(http://cdn.sendori.com/images/bg_body.png);background-repeat:repeat-x;border-top:1px #438ECE;border-bottom:1px #438ECE;border-left:1px #1A5189;border-right:1px #1A5189;display:block;cursor:pointer}
+  #slider_footer{height:30px;width:510px;background-image:url(http://cdn.sendori.com/images/bg_footer.png);background-repeat:repeat-x;border-left:1px #1A5189;border-right:1px #1A5189;border-bottom:1px #1A5189;display:block;cursor:auto}
+  #bt_learn{background-image:url(http://cdn.sendori.com/images/btn_learn.png);background-repeat:no-repeat;height:90px;margin-right:5px;width:112px;margin-top:60px;left:auto;right:0;top:0;position:absolute;}
+  #icon_alert{height:16px;width:16px;background-image:url(http://cdn.sendori.com/images/icon_alert.png);padding:5px}
+  #icon_close{background-image:url(http://cdn.sendori.com/images/icon_close.png);background-repeat:no-repeat;display:block;float:left;height:16px;width:16px;}
+  #favicon{background-position:center top;background-repeat:no-repeat;height:90px;margin-left:5px;margin-top:5px;width:16px;float:left;position:relative;}
+  #ad_title{font-family:Helvetica;font-size:13pt;font-weight:700;color:#000;text-decoration:underline;margin-right:122px;text-align:left}
+  #ad_body{font-family:Helvetica;font-size:11pt;color:#333;padding-top:5px;margin-right:125px;text-align:left;}
+  #ad_url{color:#FFF;float:left;font-family:Helvetica;font-size:10pt;margin-right:10px;margin-left:10px;padding-top:6px;cursor:auto}
+  #snd_logo{background-image:url(http://cdn.sendori.com/images/logo.png); background-repeat:no-repeat;height:17px;width:65px;cursor:auto;float:left;margin-right:10px;margin-top:1px;}
+  #notification_message{color:#FFF;float:left;font-family:Helvetica;font-size:8pt;font-weight:700;padding-left:0;margin-top:5px;text-decoration:none;}
+  #notification_alert{background-image:url(http://cdn.sendori.com/images/icon_alert.png);background-position:center center;background-repeat:no-repeat;float:left;height:16px;padding-left:10px;padding-top:5px;width:16px}
+  #slider_container{width:510px;height:146px;display:none;position:fixed;left:50%;bottom:0;margin-left:-255px;z-index:9999999999;border-radius:4px 4px 0 0;-webkit-border-radius:4px 4px 0 0;-moz-border-radius:4px 4px 0 0;box-shadow:0 0 9px #515151;-webkit-box-shadow:0 0 9px #515151;-moz-box-shadow:0 0 9px #515151}
+  #Nx_slider_container{width:510px;height:26px;display:none;position:fixed;left:50%;bottom:0;margin-left:-255px;border-radius:4px 4px 0 0;-webkit-border-radius:4px 4px 0 0;-moz-border-radius:4px 4px 0 0;z-index:9999999999;border-left:1px #1A5189;border-top:1px #1A5189;border-right:1px #1A5189;box-shadow:0 0 9px #515151;-webkit-box-shadow:0 0 9px #515151;-moz-box-shadow:0 0 9px #515151}
+</style></body></html>
